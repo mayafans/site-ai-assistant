@@ -89,16 +89,69 @@ function buildSnippet(cfg) {
   return `<script ${MARK} ${attrs.join(" ")}></script>`;
 }
 
-function inject(html, snippet) {
+// ------------------------------------------------------- SPA 路由前缀修复 ——
+// 反代把站点挂在 /<slug> 下，前端路由（React Router / Vue Router）读到的是带前缀的
+// location.pathname，路由表匹配不上 → 整页"页面不存在"（夜莺 /10.10.5.2:17000/dashboards
+// 就是这样）。修法：文档一进来就把前缀从地址栏摘掉，让路由看到干净的 /dashboards；
+// 同时把站点标识以 ?__gw=<slug> 挂回 URL —— SPA 自己 pushState 出来的地址也带着它，
+// 刷新、深链接、多站点并存都能从这条 URL 反推出属于哪个站点，不依赖 cookie 猜。
+// 只对 SPA 空壳做：普通多页站点靠文档 URL 解析相对路径，摘了前缀反而会把相对链接弄坏。
+const SPA_HINT_RE =
+  /<div[^>]+id\s*=\s*["'](?:root|app|__next|__nuxt|main-app)["']|__NEXT_DATA__|__NUXT__|data-server-rendered|ng-version\s*=\s*["']/i;
+
+/** 响应体像不像 SPA 空壳（只有这种页面才能安全摘掉路径前缀） */
+function looksLikeSpa(html) {
+  return SPA_HINT_RE.test(String(html || "").slice(0, 20000));
+}
+
+/** 注入到 SPA 文档最前面的小脚本：摘前缀 + 把站点标识挂回 URL + 之后的路由跳转沿用 */
+function buildSpaShim(ctx) {
+  const P = JSON.stringify(ctx.prefix);
+  const S = JSON.stringify(ctx.slug);
+  return (
+    `<script ${MARK}-spa>(function(){try{` +
+    `var P=${P},S=${S},M="__gw",E=encodeURIComponent(S),op=history.pushState,or=history.replaceState;` +
+    `function hasQ(q){return q.indexOf(M+"=")>=0}` +
+    `function addQ(q){return hasQ(q)?q:(q?q+"&":"?")+M+"="+E}` +
+    `function strip(p){if(/\\.[a-z0-9]{1,8}$/i.test(p))return p;` +
+    `if(p===P)return"/";if(p.indexOf(P+"/")===0)return p.slice(P.length);return p}` +
+    `function tidy(u){var a;try{a=new URL(String(u),location.href)}catch(e){return u}` +
+    `if(a.origin!==location.origin)return u;var p=strip(a.pathname),q=addQ(a.search);` +
+    `return(p===a.pathname&&q===a.search)?u:p+q+a.hash}` +
+    `function self(){return location.pathname+addQ(location.search)+location.hash}` +
+    `var p0=strip(location.pathname),q0=addQ(location.search);` +
+    `if(p0!==location.pathname||q0!==location.search){try{or.call(history,history.state,"",p0+q0+location.hash)}catch(e){}}` +
+    `history.pushState=function(st,t,u){try{return op.call(history,st,t,(u===undefined||u===null||u==="")?self():tidy(u))}catch(e){return op.call(history,st,t,u)}};` +
+    `history.replaceState=function(st,t,u){try{return or.call(history,st,t,(u===undefined||u===null||u==="")?self():tidy(u))}catch(e){return or.call(history,st,t,u)}};` +
+    `}catch(e){}})();</script>`
+  );
+}
+
+function inject(html, ctx) {
   if (html.includes(MARK)) return html;
+  const snippet = ctx.snippet;
+  const shim = looksLikeSpa(html) ? buildSpaShim(ctx) : "";
+  let placed = false;
+  if (shim) {
+    // 必须排在站点自己的脚本前面：路由初始化之前就要把地址栏洗干净
+    const open = html.search(/<head[^>]*>/i);
+    if (open >= 0) {
+      const end = html.indexOf(">", open);
+      if (end >= 0) {
+        html = html.slice(0, end + 1) + shim + html.slice(end + 1);
+        placed = true;
+      }
+    }
+  }
+  const lead = placed ? "" : shim;
   const head = html.search(/<\/head\s*>/i);
   if (head >= 0) return html.slice(0, head) + snippet + html.slice(head);
   const body = html.search(/<body[^>]*>/i);
   if (body >= 0) {
     const end = html.indexOf(">", body);
-    if (end >= 0) return html.slice(0, end + 1) + snippet + html.slice(end + 1);
+    if (end >= 0) return html.slice(0, end + 1) + lead + snippet + html.slice(end + 1);
   }
-  return snippet + html;
+  return lead + snippet + html;
 }
 
 // --------------------------------------------------------- 响应体解压 ——
@@ -340,6 +393,7 @@ function upstreamHeaders(ctx, req) {
     } catch {
       headers.referer = ctx.targetOrigin + "/";
     }
+    headers.referer = dropGwParam(headers.referer);
   }
   return headers;
 }
@@ -363,6 +417,56 @@ function cookieSite(req) {
     }
   }
   return null;
+}
+
+// SPA 摘下路径前缀后，站点标识改走 URL 上的 ?__gw=<slug>：
+// 页面自己的地址带着它，XHR/资源请求的 Referer 也带着它，所以根路径请求不再只靠 cookie 猜
+// —— 一个浏览器同时开几个站点（几个 cookie 只能留最后一个）也不会串。
+const GW_Q = "__gw";
+
+/** 从 URL/Referer 里取 __gw */
+function gwParam(s) {
+  const i = String(s || "").indexOf(GW_Q + "=");
+  if (i < 0) return null;
+  let v = s.slice(i + GW_Q.length + 1).split("&")[0].split("#")[0];
+  try {
+    v = decodeURIComponent(v);
+  } catch {}
+  v = String(v).toLowerCase();
+  return parseSlug(v) ? v : null;
+}
+
+/** 转发给上游之前把网关自己的参数摘掉，站点不该看到 __gw */
+function dropGwParam(s) {
+  const str = String(s || "");
+  if (!str.includes(GW_Q + "=")) return str;
+  const qi = str.indexOf("?");
+  if (qi < 0) return str;
+  const hi = str.indexOf("#", qi);
+  const path = str.slice(0, qi);
+  const query = str
+    .slice(qi + 1, hi < 0 ? str.length : hi)
+    .split("&")
+    .filter((p) => p && !p.startsWith(GW_Q + "="));
+  const hash = hi < 0 ? "" : str.slice(hi);
+  return path + (query.length ? "?" + query.join("&") : "") + hash;
+}
+
+/** 这条根路径请求属于哪个站点：URL 的 __gw → Referer 的 __gw → Referer 里的站点前缀 → cookie */
+function resolveSite(req) {
+  const fromUrl = gwParam(req.url);
+  if (fromUrl) return fromUrl;
+  const ref = String((req.headers && req.headers.referer) || "");
+  if (ref) {
+    const fromRef = gwParam(ref);
+    if (fromRef) return fromRef;
+    try {
+      const u = new URL(ref);
+      const seg = decodeURIComponent((u.pathname || "/").split("/")[1] || "").toLowerCase();
+      if (parseSlug(seg)) return seg;
+    } catch {}
+  }
+  return cookieSite(req);
 }
 
 // /management.html 这类是页面文件，不是站点域名
@@ -398,8 +502,8 @@ function handleRequest(cfg, req, res, attempt = 0) {
   let rest;
   let qs = "";
   if (needsRootFallback(slug)) {
-    // 根路径请求：交给当前站点（cookie），并把完整路径透传过去
-    const site = cookieSite(req);
+    // 根路径请求：交给当前站点，并把完整路径透传过去
+    const site = resolveSite(req);
     if (!site || !parseSlug(site)) return sendHelp(cfg, res, `根路径请求 ${url} 没有可归属的站点`);
     slug = site;
     const q = url.indexOf("?");
@@ -424,7 +528,7 @@ function handleRequest(cfg, req, res, attempt = 0) {
     protocol: ctx.target.protocol,
     hostname: ctx.target.hostname,
     port: ctx.target.port || (ctx.isHttps ? 443 : 80),
-    path: rest + qs,
+    path: dropGwParam(rest + qs),
     method: req.method,
     headers: upstreamHeaders(ctx, req),
     ...(ctx.isHttps ? { rejectUnauthorized: false } : {}),
@@ -507,7 +611,7 @@ function onResponse(ctx, r, res, req) {
     try {
       if (isHtml && docReq) {
         text = rewriteHtml(text, ctx);
-        if (ok2xx && shouldInject(req)) text = inject(text, ctx.snippet);
+        if (ok2xx && shouldInject(req)) text = inject(text, ctx);
       } else if (!isCss) {
         // XHR 拿到的 "text/html" 是数据，原样返回
       } else {
@@ -654,8 +758,8 @@ function buildServer(cfg) {
     }
     let wsPath;
     if (needsRootFallback(slug)) {
-      // SPA 的 WebSocket 也走根路径（/socket.io/），同样按 cookie 归还给当前站点
-      const site = cookieSite(req);
+      // SPA 的 WebSocket 也走根路径（/socket.io/），同样归还给当前站点
+      const site = resolveSite(req);
       if (!site || !parseSlug(site)) return socket.destroy();
       slug = site;
       wsPath = rawUrl;

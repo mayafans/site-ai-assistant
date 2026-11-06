@@ -14,7 +14,7 @@
     "dev": "node build-widget.mjs && node server.mjs",
     "gateway": "node deploy/gateway.mjs",
     "gateway:probe": "node deploy/gateway.mjs --probe",
-    "test": "node test/shot-policy.test.mjs"
+    "test": "node test/shot-policy.test.mjs && node test/gateway-spa.test.mjs"
   },
   "keywords": [
     "ai-assistant",
