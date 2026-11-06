@@ -607,6 +607,95 @@
     }
   }
 
+  // ------------------------------------------------ 纯 CSS :hover 强制生效 ——
+  // 有些浮层不是 JS 驱动的，而是纯 CSS：`.renderer-container:hover .xx { display: flex !important }`
+  // （夜莺仪表盘面板右上角的「更多/复制」就是这种）。合成事件唤不动 :hover，
+  // 于是把页面里所有带 :hover 的规则复制一份，把 :hover 换成一个标记类，
+  // 临时打到悬停元素和它的祖先上——等于给这个元素"钉住悬停态"。
+  const FORCE_CLASS = "kd-force-hover";
+  let forceSheet = null;
+  let forceMarked = [];
+  let forceHoverActive = false;
+
+  function collectHoverCss() {
+    const out = [];
+    const fixSel = (sel) =>
+      String(sel || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.indexOf(":hover") >= 0)
+        .map((s) => s.replace(/:hover(?![\w-])/g, "." + FORCE_CLASS))
+        .filter((s) => {
+          try {
+            document.querySelector(s);
+            return true;
+          } catch {
+            return false; // 换掉之后语法不成立（例如 :hover 后面直接跟伪元素）就丢掉
+          }
+        });
+    const walk = (rules, sink, wrap) => {
+      for (const r of rules) {
+        const kind = (r.constructor && r.constructor.name) || "";
+        if (r.cssRules && !r.selectorText) {
+          // @media / @supports / @layer 往里钻，其它分组（@keyframes 等）跳过
+          let next = null;
+          if (kind === "CSSMediaRule") next = `@media ${r.conditionText || "all"}`;
+          else if (kind === "CSSSupportsRule") next = `@supports ${r.conditionText || "all"}`;
+          else if (kind === "CSSLayerBlockRule") next = `@layer ${r.name || ""}`.trim();
+          if (!next) continue;
+          const inner = [];
+          walk(r.cssRules, inner, null);
+          if (inner.length) sink.push(`${wrap ? wrap + "{" : ""}${next}{${inner.join("")}}${wrap ? "}" : ""}`);
+          continue;
+        }
+        if (!r.selectorText || !r.style || r.selectorText.indexOf(":hover") < 0) continue;
+        const sels = fixSel(r.selectorText);
+        if (!sels.length) continue;
+        const decl = r.style.cssText;
+        if (decl) sink.push(`${sels.join(",")}{${decl}}`);
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      try {
+        walk(sheet.cssRules, out, null);
+      } catch {
+        // 跨域样式表读不了，跳过
+      }
+    }
+    return out.join("\n");
+  }
+
+  /** 给元素钉住 :hover 态（往上带 8 层：夜莺的面板容器离触发图标有 6~8 层，必须够深） */
+  function applyForceHover(el) {
+    clearForceHover();
+    let node = el;
+    for (let i = 0; node && i < 9; i++, node = node.parentElement) {
+      if (node.classList) {
+        node.classList.add(FORCE_CLASS);
+        forceMarked.push(node);
+      }
+    }
+    if (!forceSheet) {
+      forceSheet = document.createElement("style");
+      forceSheet.setAttribute("data-kiki-ignore", "true");
+    }
+    forceSheet.textContent = collectHoverCss();
+    if (!forceSheet.isConnected) (document.head || document.documentElement).appendChild(forceSheet);
+    forceHoverActive = true;
+    return forceMarked.length;
+  }
+
+  function clearForceHover() {
+    if (forceSheet && forceSheet.isConnected) forceSheet.remove();
+    for (const el of forceMarked) {
+      try {
+        el.classList.remove(FORCE_CLASS);
+      } catch {}
+    }
+    forceMarked = [];
+    forceHoverActive = false;
+  }
+
   // 受控组件的值必须"骗过"框架的值跟踪器：
   // React 会在 DOM 节点实例上重定义 value 的 get/set（value tracker）。
   // 直接写 el.value = x 只更新了 tracker，框架随后对比发现"没变化"，就把 input 事件吞掉，
@@ -641,6 +730,20 @@
 
   /** 解析并执行一条动作文本，返回 {ok, message, ...} */
   async function performCommand(raw) {
+    // 上一条 hover 钉住的 :hover 态要保留到这一次动作做完（否则菜单在 click 前就消失了）
+    const wasForced = forceHoverActive;
+    try {
+      return await performCommandInner(raw);
+    } finally {
+      if (wasForced) {
+        try {
+          clearForceHover();
+        } catch {}
+      }
+    }
+  }
+
+  async function performCommandInner(raw) {
     const line = String(raw || "").trim();
     const sp = line.indexOf(" ");
     const verb = (sp < 0 ? line : line.slice(0, sp)).toLowerCase();
@@ -707,6 +810,25 @@
         level++;
       }
       await sleep(120);
+      // 还是没反应就尝试强制 :hover：纯 CSS 浮层（夜莺面板右上角工具栏）只能用这招
+      let forced = false;
+      if (!reacted) {
+        try {
+          applyForceHover(el);
+          await sleep(260);
+          if (watcher.hits() > 0 || visibleMenus(doc).length > menusBefore || actionableCount(doc) !== actBefore) {
+            reacted = true;
+            forced = true;
+          } else {
+            clearForceHover(); // 没效果就立刻撤掉，别把页面留在被钉住的状态
+          }
+        } catch (e) {
+          console.warn("[assistant] force hover failed", e);
+          try {
+            clearForceHover();
+          } catch {}
+        }
+      }
       watcher.stop();
       highlight(el);
       const menus = visibleMenus(doc).length;
@@ -715,10 +837,10 @@
         ok: true,
         changed: reacted,
         message: reacted
-          ? `已悬停 ${describe(el)}${climbed}，页面有反应${
+          ? `已悬停 ${describe(el)}${climbed}${forced ? "，用强制 :hover 把纯 CSS 浮层唤起来了" : ""}，页面有反应${
               menus > menusBefore ? "，新出现的菜单/浮层已经在下一条快照里，直接 click 它" : "，新出现的内容在下一条快照里"
             }`
-          : `已悬停 ${describe(el)}${climbed}，页面没有变化：如果菜单本该出现，可能它只认真实鼠标指针（纯 CSS :hover），改用 click 展开或换个触发元素`,
+          : `已悬停 ${describe(el)}${climbed}，页面没有变化：这个浮层可能既不吃合成事件也不吃 :hover，改用 click 展开或换个触发元素`,
       };
     }
 
