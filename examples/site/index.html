@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>云主机选购 · AI 助手 Demo</title>
+<style>
+  :root { --blue:#3b6cff; --line:#e8edf6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:#1f2937; background:#f5f7fb; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 28px; background:#fff; border-bottom:1px solid var(--line); }
+  .brand { font-weight:700; font-size:16px; }
+  .brand span { color:var(--blue); }
+  .crumb { color:#94a3b8; font-size:13px; }
+  main { max-width:980px; margin:0 auto; padding:28px 28px 120px; }
+  h1 { font-size:24px; margin:0 0 6px; }
+  .lead { color:#64748b; margin:0 0 22px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; }
+  .row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .label { width:92px; color:#64748b; flex:none; }
+  .opts { display:flex; gap:10px; flex-wrap:wrap; }
+  .opt, .plan { border:1px solid #dbe3ef; background:#fff; border-radius:10px; padding:9px 16px; cursor:pointer; font:inherit; color:#334155; }
+  .opt[aria-checked="true"] { border-color:var(--blue); background:#eef3ff; color:var(--blue); font-weight:600; }
+  .plans { display:flex; gap:12px; flex-wrap:wrap; }
+  .plan { width:210px; text-align:left; display:flex; flex-direction:column; gap:4px; }
+  .plan b { font-size:16px; }
+  .plan span { color:#ef6c2e; font-weight:600; }
+  .plan[aria-checked="true"] { border-color:var(--blue); box-shadow:0 0 0 2px #dbe6ff inset; }
+  select, input[type=number] { border:1px solid #dbe3ef; border-radius:10px; padding:9px 12px; font:inherit; }
+  .summary { display:flex; align-items:center; justify-content:space-between; background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+  .price { font-size:24px; font-weight:700; color:#ef6c2e; }
+  .primary { border:none; border-radius:12px; background:var(--blue); color:#fff; padding:13px 34px; font-size:15px; font-weight:600; cursor:pointer; }
+  .note { color:#94a3b8; font-size:12px; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span>◆</span> 云主机选购 Demo</div>
+  <div class="crumb">首页 / 选购 / 快速配置</div>
+</header>
+
+<main>
+  <h1>云主机选购</h1>
+  <p class="lead">这是一个用于演示「页面内 AI 助手」的模拟下单页：助手会读取下面的控件并直接替你操作。</p>
+
+  <section class="card">
+    <div class="row">
+      <div class="label">地域</div>
+      <div class="opts" id="regions">
+        <button class="opt" data-value="上海" aria-checked="true">上海</button>
+        <button class="opt" data-value="北京" aria-checked="false">北京</button>
+        <button class="opt" data-value="广州" aria-checked="false">广州</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="align-items:flex-start">
+      <div class="label" style="padding-top:8px">配置</div>
+      <div class="plans" id="plans">
+        <button class="plan" data-plan="2核2G" data-month="38.7" aria-checked="false">
+          <b>2核2G</b><span>¥38.7/月</span><small>个人博客</small>
+        </button>
+        <button class="plan" data-plan="2核4G" data-month="61.92" aria-checked="true">
+          <b>2核4G</b><span>¥61.92/月</span><small>建站 / 小程序后端</small>
+        </button>
+        <button class="plan" data-plan="4核8G" data-month="123.84" aria-checked="false">
+          <b>4核8G</b><span>¥123.84/月</span><small>并发较高的应用</small>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <div class="label">时长</div>
+      <select id="term">
+        <option value="1个月" data-months="1">1 个月</option>
+        <option value="半年" data-months="6" selected>半年</option>
+        <option value="1年" data-months="12">1 年</option>
+      </select>
+      <div class="label" style="width:auto;margin-left:16px">数量</div>
+      <input id="qty" type="number" min="1" value="1" style="width:90px" />
+    </div>
+  </section>
+
+  <div class="summary">
+    <div>
+      <div style="color:#64748b">配置费用</div>
+      <div class="price" id="price" data-ai-text>¥464.40</div>
+      <div class="note">本页为演示环境，不会产生任何真实费用。</div>
+    </div>
+    <button class="primary" id="checkout">去结算</button>
+  </div>
+</main>
+
+<script src="/sdk.js"></script>
+<script>
+  const state = { region: "上海", plan: "2核4G", month: 61.92, months: 6, qty: 1 };
+
+  function paint() {
+    document.querySelectorAll("#regions .opt").forEach((b) => {
+      b.setAttribute("aria-checked", String(b.dataset.value === state.region));
+    });
+    document.querySelectorAll("#plans .plan").forEach((b) => {
+      b.setAttribute("aria-checked", String(b.dataset.plan === state.plan));
+    });
+    const total = state.month * state.months * state.qty;
+    document.getElementById("price").textContent = "¥" + total.toFixed(2);
+    if (typeof updateNav === "function") updateNav();
+  }
+
+  document.getElementById("regions").addEventListener("click", (e) => {
+    const b = e.target.closest(".opt");
+    if (!b) return;
+    state.region = b.dataset.value;
+    paint();
+  });
+
+  document.getElementById("plans").addEventListener("click", (e) => {
+    const b = e.target.closest(".plan");
+    if (!b) return;
+    state.plan = b.dataset.plan;
+    state.month = Number(b.dataset.month);
+    paint();
+  });
+
+  document.getElementById("term").addEventListener("change", (e) => {
+    const opt = e.target.selectedOptions[0];
+    state.months = Number(opt.dataset.months);
+    paint();
+  });
+
+  document.getElementById("qty").addEventListener("input", (e) => {
+    state.qty = Math.max(1, Number(e.target.value) || 1);
+    paint();
+  });
+
+  document.getElementById("checkout").addEventListener("click", () => {
+    location.href = checkoutUrl();
+  });
+
+  function checkoutUrl() {
+    const q = new URLSearchParams({
+      region: state.region,
+      plan: state.plan,
+      months: String(state.months),
+      qty: String(state.qty),
+      total: (state.month * state.months * state.qty).toFixed(2),
+    });
+    return "/order?" + q.toString();
+  }
+
+  // 把跳转目标告诉助手 SDK，让它走「跨页接管」而不是普通点击
+  function updateNav() {
+    document.getElementById("checkout").setAttribute("data-nav-url", checkoutUrl());
+  }
+
+  paint();
+</script>
+</body>
+</html>

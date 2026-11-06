@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 助手平台 · 站点配置</title>
+<style>
+  :root{--blue:#3b6cff;--line:#e8edf6;--bg:#f5f7fb}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1f2937;background:var(--bg)}
+  header{display:flex;align-items:center;gap:12px;padding:14px 22px;background:#fff;border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0}
+  header .sp{flex:1}
+  input,textarea,select{font:inherit;border:1px solid #dbe3ef;border-radius:8px;padding:8px 10px;width:100%;background:#fff;outline:none}
+  input:focus,textarea:focus{border-color:var(--blue)}
+  textarea{min-height:80px;resize:vertical}
+  .json-area{width:100%;height:140px;min-height:140px;resize:vertical;font:12px/1.6 ui-monospace,Consolas,monospace;background:#fbfcff}
+  button{font:inherit;border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#334155}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  button.danger{color:#dc2626;border-color:#fecaca}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start}
+  .sites{width:260px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;flex:none}
+  .sites h3{margin:0 0 10px;font-size:13px;color:#64748b;font-weight:600}
+  .site-item{padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px}
+  .site-item:hover{background:#f1f5ff}
+  .site-item.active{background:#eef3ff;color:var(--blue);font-weight:600}
+  .main{flex:1;min-width:0}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 12px;color:#0f172a}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:200px}
+  label{display:block;font-size:12px;color:#64748b;margin:8px 0 4px}
+  .hint{font-size:12px;color:#94a3b8;margin-top:4px}
+  .actions{display:flex;gap:10px;margin:10px 0}
+  .embed{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px 12px;font:12px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+  .skill,.tool{border:1px dashed #dbe3ef;border-radius:10px;padding:10px;margin-bottom:10px;background:#fbfcff}
+  .kv{display:flex;gap:8px}
+  .kv>div{flex:1}
+  .status{font-size:12px;margin-left:8px}
+  .ok{color:#16a34a}.err{color:#dc2626}
+  #toast{position:fixed;right:20px;bottom:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:8px;opacity:0;transition:.2s;font-size:13px}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>AI 助手平台 · 站点配置</h1>
+  <div class="sp"></div>
+  <form id="authBar" style="display:flex;gap:8px;align-items:center;margin:0">
+    <input id="username" placeholder="用户名" autocomplete="username" style="width:140px" />
+    <input id="password" type="password" placeholder="密码" autocomplete="current-password" style="width:160px" />
+    <button id="loginBtn" class="primary" type="submit">登录</button>
+  </form>
+  <span id="userBar" style="display:none;align-items:center;gap:10px;font-size:13px;color:#475569">
+    <span id="who"></span>
+    <button id="usersBtn" type="button">用户管理</button>
+    <button id="logoutBtn" type="button">退出</button>
+  </span>
+</header>
+<div id="loginHint" class="hint" style="padding:8px 22px">请先登录；首次启动的管理员账号打印在服务端日志里（也可用 ADMIN_USER / ADMIN_PASSWORD 环境变量指定）。</div>
+
+<div class="wrap">
+  <aside class="sites">
+    <h3>业务站点</h3>
+    <div id="siteList"></div>
+    <div class="actions">
+      <button id="newBtn">＋ 新建站点</button>
+    </div>
+    <div class="hint">每个站点独立配置 LLM、技能、业务请求和话术。</div>
+  </aside>
+
+  <main class="main">
+    <div class="card">
+      <h2>基础</h2>
+      <div class="row">
+        <div><label>站点 ID</label><input id="f-id" readonly /></div>
+        <div><label>名称</label><input id="f-name" /></div>
+        <div><label>站点 Key（注入脚本用）</label><input id="f-key" /></div>
+        <div><label>允许来源（逗号分隔，* 为全部）</label><input id="f-origins" placeholder="https://www.example.com,*" /></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>LLM</h2>
+      <div class="row">
+        <div><label>Base URL</label><input id="f-base" placeholder="https://api.deepseek.com/v1" /></div>
+        <div><label>模型</label><input id="f-model" placeholder="deepseek-chat" /></div>
+        <div><label>API Key</label><input id="f-apikey" type="password" placeholder="留空表示不修改" /></div>
+      </div>
+      <div class="actions"><button id="testLlm">测试 LLM 连通性</button><span id="llmStatus" class="status"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>对话与外观</h2>
+      <div class="row">
+        <div><label>标题</label><input id="f-title" /></div>
+        <div><label>副标题</label><input id="f-subtitle" /></div>
+        <div><label>主题色</label><input id="f-theme" placeholder="#3b6cff" /></div>
+      </div>
+      <label>欢迎语</label><input id="f-welcome" />
+      <label>建议问题（每行一个）</label><textarea id="f-suggests"></textarea>
+      <label>系统提示词（留空使用默认页面助手提示词）</label><textarea id="f-prompt" style="min-height:120px"></textarea>
+      <label><input type="checkbox" id="f-autoopen" style="width:auto;margin-right:6px" />页面加载后自动展开助手</label>
+    </div>
+
+    <div class="card">
+      <h2>技能（SKILL.md）</h2>
+      <div id="skills"></div>
+      <div class="actions"><button id="addSkill">＋ 添加技能</button></div>
+      <div class="hint">技能 = 名称 + 触发描述 + 说明正文；模型需要时会用 skill 工具加载正文。</div>
+    </div>
+
+    <div class="card">
+      <h2>业务请求（服务端 HTTP 工具）</h2>
+      <div id="tools"></div>
+      <div class="actions"><button id="addTool">＋ 添加请求</button></div>
+      <div class="hint">示例：查订单 → GET https://api.example.com/orders/{orderId}；参数用 JSON Schema 描述。</div>
+    </div>
+
+    <div class="card" id="usersCard" style="display:none">
+      <h2>用户与权限</h2>
+      <div class="row">
+        <div><label>用户名</label><input id="u-name" placeholder="字母/数字/_ . -" /></div>
+        <div><label>初始密码（至少 6 位）</label><input id="u-pass" type="password" /></div>
+        <div><label>角色</label>
+          <select id="u-role">
+            <option value="viewer">查看（只读）</option>
+            <option value="editor">编辑（可改站点配置）</option>
+            <option value="admin">管理员（含用户管理）</option>
+          </select>
+        </div>
+        <div style="flex:none;align-self:end"><button id="addUserBtn" class="primary">添加用户</button></div>
+      </div>
+      <div id="userList" style="margin-top:12px"></div>
+      <div class="hint">改密码或删用户会让对方已登录的会话立即失效；至少保留一个管理员。</div>
+    </div>
+
+    <div class="card">
+      <h2>接入代码</h2>
+      <div id="embed" class="embed"></div>
+      <div class="hint">把脚本放到业务页面 &lt;head&gt; 或 &lt;body&gt; 末尾即可；同源时可省略 data-api-base。</div>
+    </div>
+
+    <div class="actions">
+      <button id="saveBtn" class="primary">保存配置</button>
+      <button id="deleteBtn" class="danger">删除站点</button>
+      <a id="demoLink" href="/demo?fresh=1" target="_blank"><button>打开 Demo 页</button></a>
+    </div>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { sites: [], current: null, user: null };
+let toastTimer;
+function toast(msg, isErr) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.style.background = isErr ? "#b91c1c" : "#0f172a";
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+function showLogin() {
+  state.user = null;
+  $("authBar").style.display = "flex";
+  $("userBar").style.display = "none";
+  $("loginHint").style.display = "";
+  $("usersCard").style.display = "none";
+  document.querySelector(".wrap").style.display = "none";
+}
+const ROLE_CN = { admin: "管理员", editor: "编辑", viewer: "查看" };
+function showApp(user) {
+  state.user = user;
+  $("authBar").style.display = "none";
+  $("userBar").style.display = "flex";
+  $("who").textContent = "已登录：" + user.username + "（" + (ROLE_CN[user.role] || user.role) + "）";
+  $("loginHint").style.display = "none";
+  document.querySelector(".wrap").style.display = "flex";
+  $("usersCard").style.display = user.role === "admin" ? "" : "none";
+}
+// 后台既可直接部署在根路径（/admin），也可挂在反代前缀下（如 /ai/admin）。
+// 页面内接口一律带上与页面同级的前缀，避免 /api/* 请求落到宿主站点的其它服务。
+const API_PREFIX = (() => {
+  const m = location.pathname.match(/^(.*?)\/admin\/?$/);
+  return m && m[1] ? m[1] : "";
+})();
+
+async function api(path, opt = {}) {
+  const res = await fetch(API_PREFIX + path, {
+    ...opt,
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", ...(opt.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    showLogin();
+    throw new Error("未登录");
+  }
+  if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+  return data;
+}
+
+function renderSiteList() {
+  const box = $("siteList");
+  box.innerHTML = "";
+  state.sites.forEach((s) => {
+    const div = document.createElement("div");
+    div.className = "site-item" + (state.current && state.current.id === s.id ? " active" : "");
+    div.textContent = s.name + "（" + s.key + "）";
+    div.onclick = () => selectSite(s.id);
+    box.appendChild(div);
+  });
+}
+function el(tag, cls, html) {
+  const d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (html != null) d.innerHTML = html;
+  return d;
+}
+function renderSkills(list) {
+  const box = $("skills");
+  box.innerHTML = "";
+  (list || []).forEach((s, idx) => {
+    const card = el("div", "skill");
+    card.innerHTML = `
+      <div class="kv"><div><label>名称</label><input data-k="name" value="${(s.name || "").replace(/"/g, "&quot;")}"></div>
+      <div><label>触发描述</label><input data-k="description" value="${(s.description || "").replace(/"/g, "&quot;")}"></div>
+      <div style="flex:none;align-self:end"><button data-del="${idx}">删除</button></div></div>
+      <label>正文（SKILL.md / instructions）</label><textarea data-k="body" style="min-height:90px">${(s.body || "").replace(/</g, "&lt;")}</textarea>`;
+    card.querySelector("[data-del]").onclick = () => {
+      const arr = readSkills(); arr.splice(idx, 1); renderSkills(arr);
+    };
+    box.appendChild(card);
+  });
+}
+function readSkills() {
+  return [...$("skills").querySelectorAll(".skill")].map((c) => ({
+    name: c.querySelector('[data-k="name"]').value.trim(),
+    description: c.querySelector('[data-k="description"]').value.trim(),
+    body: c.querySelector('[data-k="body"]').value,
+  })).filter((s) => s.name);
+}
+function renderTools(list) {
+  const box = $("tools");
+  box.innerHTML = "";
+  (list || []).forEach((t, idx) => {
+    const card = el("div", "tool");
+    card.innerHTML = `
+      <div class="kv">
+        <div><label>工具名（英文/下划线）</label><input data-k="name" value="${(t.name || "").replace(/"/g, "&quot;")}"></div>
+        <div><label>描述（给模型看）</label><input data-k="description" value="${(t.description || "").replace(/"/g, "&quot;")}"></div>
+        <div style="flex:none;align-self:end"><button data-del="${idx}">删除</button></div>
+      </div>
+      <div class="kv">
+        <div style="flex:none;width:110px"><label>方法</label><input data-k="method" value="${t.method || "GET"}"></div>
+        <div><label>URL（可用 {参数名} 占位）</label><input data-k="url" value="${(t.url || "").replace(/"/g, "&quot;")}"></div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Headers（JSON，可空）</label>
+        <textarea class="json-area" data-k="headers" spellcheck="false">${JSON.stringify(t.headers || {})}</textarea>
+      </div>
+      <div style="margin-top:10px">
+        <label>参数 JSON Schema（可空）</label>
+        <textarea class="json-area" data-k="params" spellcheck="false">${JSON.stringify(t.params || { type: "object", properties: {} }, null, 2)}</textarea>
+      </div>`;
+    card.querySelector("[data-del]").onclick = () => {
+      const arr = readTools(); arr.splice(idx, 1); renderTools(arr);
+    };
+    box.appendChild(card);
+  });
+}
+function readTools() {
+  return [...$("tools").querySelectorAll(".tool")].map((c) => {
+    const get = (k) => c.querySelector(`[data-k="${k}"]`).value;
+    let headers = {}, params = { type: "object", properties: {} };
+    try { headers = JSON.parse(get("headers") || "{}"); } catch {}
+    try { params = JSON.parse(get("params") || "{}"); } catch {}
+    return { name: get("name").trim(), description: get("description").trim(), method: get("method").trim() || "GET", url: get("url").trim(), headers, params };
+  }).filter((t) => t.name && t.url);
+}
+function fillForm(site) {
+  state.current = site;
+  $("f-id").value = site.id;
+  $("f-name").value = site.name || "";
+  $("f-key").value = site.key || "";
+  $("f-origins").value = (site.origins || []).join(",");
+  $("f-base").value = site.llm?.baseURL || "";
+  $("f-model").value = site.llm?.model || "";
+  $("f-apikey").value = "";
+  $("f-apikey").placeholder = site.llm?.apiKey ? "已配置（留空不修改）" : "填写 API Key";
+  $("f-title").value = site.ui?.title || "";
+  $("f-subtitle").value = site.ui?.subtitle || "";
+  $("f-theme").value = site.ui?.theme || "";
+  $("f-welcome").value = site.ui?.welcome || "";
+  $("f-suggests").value = (site.ui?.suggests || []).join("\n");
+  $("f-prompt").value = site.prompt || "";
+  $("f-autoopen").checked = site.ui?.autoOpen !== false;
+  renderSkills(site.skills || []);
+  renderTools(site.tools || []);
+  const base = location.origin + API_PREFIX;
+  const demoLink = $("demoLink");
+  if (demoLink) demoLink.href = API_PREFIX + "/demo?site=" + encodeURIComponent(site.key) + "&fresh=1";
+  $("embed").textContent =
+    `<script src="${base}/widget.js"\n        data-api-base="${base}"\n        data-site-key="${site.key}"\n        data-session-key="aiassist-${site.key}"\n        data-title="${site.ui?.title || "AI 助手"}"\n        data-theme="${site.ui?.theme || "#3b6cff"}"\n        defer><\/script>`;
+}
+async function selectSite(id) {
+  const site = await api("/api/admin/sites/" + id);
+  fillForm(site);
+  renderSiteList();
+}
+async function reload() {
+  const data = await api("/api/admin/sites");
+  state.sites = data.sites;
+  
+  renderSiteList();
+  if (!state.current && state.sites[0]) return selectSite(state.sites[0].id);
+  if (state.current) {
+    const cur = state.sites.find((s) => s.id === state.current.id);
+    if (cur) return selectSite(cur.id);
+  }
+}
+function collect() {
+  return {
+    name: $("f-name").value.trim(),
+    key: $("f-key").value.trim(),
+    origins: $("f-origins").value.split(",").map((s) => s.trim()).filter(Boolean),
+    llm: { baseURL: $("f-base").value.trim(), model: $("f-model").value.trim(), apiKey: $("f-apikey").value.trim() },
+    ui: {
+      title: $("f-title").value.trim(),
+      subtitle: $("f-subtitle").value.trim(),
+      theme: $("f-theme").value.trim(),
+      welcome: $("f-welcome").value.trim(),
+      suggests: $("f-suggests").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      autoOpen: $("f-autoopen").checked,
+    },
+    prompt: $("f-prompt").value,
+    skills: readSkills(),
+    tools: readTools(),
+  };
+}
+$("authBar").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: $("username").value.trim(), password: $("password").value }),
+    });
+    const me = await api("/api/auth/me");
+    showApp(me.user);
+    await reload();
+    if (me.user.role === "admin") loadUsers();
+    toast("登录成功");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+$("logoutBtn").onclick = async () => {
+  try {
+    await api("/api/auth/logout", { method: "POST", body: "{}" });
+  } catch {}
+  state.current = null;
+  state.sites = [];
+  showLogin();
+  toast("已退出");
+};
+$("usersBtn").onclick = () => {
+  $("usersCard").style.display = "";
+  $("usersCard").scrollIntoView({ behavior: "smooth" });
+  loadUsers();
+};
+$("addUserBtn").onclick = async () => {
+  try {
+    await api("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({ username: $("u-name").value.trim(), password: $("u-pass").value, role: $("u-role").value }),
+    });
+    $("u-name").value = "";
+    $("u-pass").value = "";
+    await loadUsers();
+    toast("已添加用户");
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+async function loadUsers() {
+  try {
+    const data = await api("/api/admin/users");
+    const box = $("userList");
+    box.innerHTML = "";
+    data.users.forEach((u) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #eef2f9";
+      const label = document.createElement("span");
+      label.style.flex = "1";
+      label.textContent = u.username + "（" + (ROLE_CN[u.role] || u.role) + "）";
+      const reset = document.createElement("button");
+      reset.textContent = "重置密码";
+      reset.onclick = async () => {
+        const pw = prompt("给 " + u.username + " 设置新密码（至少 6 位）");
+        if (!pw) return;
+        try {
+          await api("/api/admin/users/" + encodeURIComponent(u.username), { method: "PUT", body: JSON.stringify({ password: pw }) });
+          toast("已重置");
+        } catch (err) {
+          toast(err.message, true);
+        }
+      };
+      const del = document.createElement("button");
+      del.textContent = "删除";
+      del.className = "danger";
+      del.onclick = async () => {
+        if (!confirm("删除用户 " + u.username + "？")) return;
+        try {
+          await api("/api/admin/users/" + encodeURIComponent(u.username), { method: "DELETE" });
+          await loadUsers();
+          toast("已删除");
+        } catch (err) {
+          toast(err.message, true);
+        }
+      };
+      row.append(label, reset, del);
+      box.appendChild(row);
+    });
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+$("newBtn").onclick = async () => {
+  try {
+    const site = await api("/api/admin/sites", {
+      method: "POST",
+      body: JSON.stringify({ name: "新站点", key: "site-" + Math.random().toString(36).slice(2, 7) }),
+    });
+    toast("已创建");
+    await reload();
+    await selectSite(site.id);
+  } catch (e) { toast(e.message, true); }
+};
+$("saveBtn").onclick = async () => {
+  if (!state.current) return;
+  try {
+    const body = collect();
+    if (!body.llm.apiKey) delete body.llm.apiKey;
+    await api("/api/admin/sites/" + state.current.id, { method: "PUT", body: JSON.stringify(body) });
+    toast("已保存");
+    await reload();
+  } catch (e) { toast(e.message, true); }
+};
+$("deleteBtn").onclick = async () => {
+  if (!state.current || !confirm("确认删除站点 " + state.current.name + "？")) return;
+  try {
+    await api("/api/admin/sites/" + state.current.id, { method: "DELETE" });
+    state.current = null;
+    toast("已删除");
+    await reload();
+  } catch (e) { toast(e.message, true); }
+};
+$("addSkill").onclick = () => renderSkills([...readSkills(), { name: "", description: "", body: "" }]);
+$("addTool").onclick = () => renderTools([...readTools(), { name: "", description: "", method: "GET", url: "", headers: {}, params: { type: "object", properties: {} } }]);
+$("testLlm").onclick = async () => {
+  if (!state.current) return;
+  $("llmStatus").textContent = "测试中…";
+  $("llmStatus").className = "status";
+  try {
+    const r = await api("/api/admin/test-llm", {
+      method: "POST",
+      body: JSON.stringify({ id: state.current.id, llm: { baseURL: $("f-base").value.trim(), model: $("f-model").value.trim(), apiKey: $("f-apikey").value.trim() || undefined } }),
+    });
+    $("llmStatus").textContent = r.ok ? "连接正常：" + (r.reply || "ok") : "失败：" + r.error;
+    $("llmStatus").className = "status " + (r.ok ? "ok" : "err");
+  } catch (e) {
+    $("llmStatus").textContent = "失败：" + e.message;
+    $("llmStatus").className = "status err";
+  }
+};
+(async function init() {
+  try {
+    const me = await api("/api/auth/me");
+    showApp(me.user);
+    await reload();
+    if (me.user.role === "admin") loadUsers();
+  } catch {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>
+
+
+
+

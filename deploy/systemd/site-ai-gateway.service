@@ -1,0 +1,18 @@
+[Unit]
+Description=Site AI Assistant gateway (reverse-proxy + injection)
+After=network.target site-ai-assistant.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/site-ai-assistant
+Environment=NODE_ENV=production
+# 只监听环回：公网入口交给 Nginx 做 HTTPS + 访问控制
+Environment=GW_ASSISTANT_BASE=http://127.0.0.1:8820
+ExecStart=/usr/bin/node /opt/site-ai-assistant/deploy/gateway.mjs --config /opt/site-ai-assistant/deploy/gateway.config.json
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/site-ai-gateway.log
+StandardError=append:/var/log/site-ai-gateway.log
+
+[Install]
+WantedBy=multi-user.target

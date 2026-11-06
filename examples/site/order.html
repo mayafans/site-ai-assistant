@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>订单确认 · AI 助手 Demo</title>
+<style>
+  :root { --blue:#3b6cff; --line:#e8edf6; }
+  body { margin:0; font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:#1f2937; background:#f5f7fb; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 28px; background:#fff; border-bottom:1px solid var(--line); }
+  .brand { font-weight:700; font-size:16px; }
+  .brand span { color:var(--blue); }
+  main { max-width:760px; margin:0 auto; padding:28px 28px 120px; }
+  h1 { font-size:22px; margin:0 0 18px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 22px; }
+  .line { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px dashed #eef2f7; }
+  .line:last-child { border-bottom:none; }
+  .k { color:#64748b; }
+  .total { font-size:24px; font-weight:700; color:#ef6c2e; }
+  .actions { display:flex; gap:12px; margin-top:22px; }
+  .primary { border:none; border-radius:12px; background:var(--blue); color:#fff; padding:13px 34px; font-size:15px; font-weight:600; cursor:pointer; }
+  .ghost { border:1px solid #dbe3ef; background:#fff; border-radius:12px; padding:13px 26px; font-size:15px; cursor:pointer; color:#334155; text-decoration:none; }
+  .note { color:#94a3b8; font-size:12px; margin-top:12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span>◆</span> 云主机选购 Demo</div>
+  <div style="color:#94a3b8;font-size:13px">首页 / 选购 / 订单确认</div>
+</header>
+
+<main>
+  <h1>订单确认</h1>
+  <section class="card" id="order">
+    <div class="line"><span class="k">地域</span><span id="o-region">上海</span></div>
+    <div class="line"><span class="k">配置</span><span id="o-plan">2核4G</span></div>
+    <div class="line"><span class="k">时长</span><span id="o-months">6 个月</span></div>
+    <div class="line"><span class="k">数量</span><span id="o-qty">1 台</span></div>
+    <div class="line"><span class="k">应付金额</span><span class="total" id="o-total" data-ai-text>¥464.40</span></div>
+    <div class="actions">
+      <a class="ghost" href="/">返回修改</a>
+      <button class="primary" id="submit" data-risk="manual">提交订单</button>
+    </div>
+    <p class="note">演示环境：点击提交不会产生真实订单，也不会扣费。</p>
+  </section>
+</main>
+
+<script src="/sdk.js"></script>
+<script>
+  const q = new URLSearchParams(location.search);
+  const months = Number(q.get("months") || 6);
+  document.getElementById("o-region").textContent = q.get("region") || "上海";
+  document.getElementById("o-plan").textContent = q.get("plan") || "2核4G";
+  document.getElementById("o-months").textContent = months + " 个月";
+  document.getElementById("o-qty").textContent = (q.get("qty") || 1) + " 台";
+  document.getElementById("o-total").textContent = "¥" + (q.get("total") || "464.40");
+
+  document.getElementById("submit").addEventListener("click", () => {
+    document.getElementById("order").insertAdjacentHTML(
+      "beforeend",
+      '<p class="note" style="color:#16a34a">✅ 演示环境：已模拟提交订单，未产生任何真实订单。</p>',
+    );
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "default": {
+    "id": "default",
+    "name": "默认站点",
+    "key": "default",
+    "origins": ["*"],
+    "llm": {
+      "baseURL": "https://api.deepseek.com/v1",
+      "model": "deepseek-chat",
+      "apiKey": ""
+    },
+    "ui": {
+      "title": "AI 助手",
+      "subtitle": "站点智能助手",
+      "welcome": "Hi，我是 AI 助手 ~",
+      "welcomeDesc": "可以问我当前页面上的任何内容",
+      "suggests": ["这个页面是做什么的？", "帮我填一下这个表单"],
+      "theme": "#3b6cff",
+      "autoOpen": true
+    },
+    "prompt": "",
+    "skills": [],
+    "tools": []
+  }
+}

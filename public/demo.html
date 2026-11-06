@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>业务系统 Demo · 工单</title>
+<style>
+  :root{--blue:#3b6cff;--line:#e8edf6}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1f2937;background:#f5f7fb}
+  header{display:flex;align-items:center;gap:12px;padding:14px 26px;background:#fff;border-bottom:1px solid var(--line)}
+  .brand{font-weight:700}.brand span{color:var(--blue)}
+  .badge{margin-left:auto;color:#94a3b8;font-size:12px}
+  main{max-width:760px;margin:0 auto;padding:26px 26px 120px}
+  h1{font-size:22px;margin:0 0 16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+  label{display:block;font-size:12px;color:#64748b;margin:10px 0 4px}
+  input,select,textarea{width:100%;font:inherit;border:1px solid #dbe3ef;border-radius:9px;padding:9px 11px;background:#fff;outline:none}
+  input:focus,select:focus{border-color:var(--blue)}
+  .row{display:flex;gap:14px}.row>div{flex:1}
+  .btn{border:none;border-radius:10px;background:var(--blue);color:#fff;padding:11px 24px;font-size:14px;cursor:pointer;margin-top:14px}
+  .note{color:#94a3b8;font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span>◆</span> 业务系统 Demo</div>
+  <div style="color:#94a3b8;font-size:13px">工单 / 新建</div>
+  <span class="badge" id="siteBadge"></span>
+</header>
+<main>
+  <h1>新建客户工单</h1>
+  <p style="color:#64748b;margin-top:0">这是一个模拟的业务页面，用来演示「平台化助手」：LLM、技能、业务请求都在后台按站点配置。</p>
+
+  <section class="card">
+    <div class="row">
+      <div>
+        <label>工单类型</label>
+        <select id="kind">
+          <option>产品咨询</option>
+          <option>售后维修</option>
+          <option>投诉建议</option>
+        </select>
+      </div>
+      <div>
+        <label>客户名称</label>
+        <input id="customer" placeholder="例如：某某公司" />
+      </div>
+    </div>
+    <label>订单号</label>
+    <input id="orderNo" placeholder="例如：SO20261104001" />
+    <label>问题描述</label>
+    <textarea id="desc" rows="3" placeholder="描述客户反馈的问题"></textarea>
+    <button class="btn" id="submitTicket">提交工单</button>
+    <div class="note">演示环境：提交只会在本地提示，不会写入任何系统。</div>
+  </section>
+</main>
+
+<script>
+  // 动态加载助手：?site=<站点key>&fresh=1 表示用该站点配置开一个全新会话
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const site = q.get("site") || "default";
+    const fresh = q.get("fresh") === "1";
+    const sessionKey = "aiassist-" + site; // 每个站点独立对话记录
+    if (fresh) {
+      try {
+        ["sessionId", "history", "draft"].forEach((k) => localStorage.removeItem(sessionKey + "." + k));
+      } catch {}
+    }
+    document.getElementById("siteBadge").textContent = "当前站点：" + site;
+    const s = document.createElement("script");
+    s.src = "/widget.js";
+    s.dataset.siteKey = site;
+    s.dataset.sessionKey = sessionKey;
+    s.dataset.title = "业务助手";
+    s.dataset.autoOpen = "true";
+    s.defer = true;
+    document.body.appendChild(s);
+  })();
+
+  document.getElementById("submitTicket").addEventListener("click", () => {
+    const kind = document.getElementById("kind").value;
+    const customer = document.getElementById("customer").value.trim();
+    const orderNo = document.getElementById("orderNo").value.trim();
+    alert(`演示：已提交工单\n类型：${kind}\n客户：${customer || "-"}\n订单号：${orderNo || "-"}`);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "assistant": {
+    "base": "http://127.0.0.1:8820",
+    "widgetPath": "/widget.js"
+  },
+  "bind": "0.0.0.0",
+  "port": 3000,
+  "defaults": {
+    "title": "站点助手",
+    "siteKey": "default",
+    "sessionKey": "aiassist",
+    "spa": false
+  },
+  "dynamic": {
+    "wildcardExt": true
+  }
+}

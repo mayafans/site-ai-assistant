@@ -1,0 +1,22 @@
+[Unit]
+Description=Site AI Assistant (platform + runtime)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/site-ai-assistant
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8820
+Environment=CHAT_RATE_PER_MIN=30
+# 首次启动会用它建管理员，起完可以删掉这两行
+# Environment=ADMIN_USER=admin
+# Environment=ADMIN_PASSWORD=改成你的口令
+ExecStart=/usr/bin/node /opt/site-ai-assistant/server.mjs
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/site-ai-assistant.log
+StandardError=append:/var/log/site-ai-assistant.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>嵌套结构测试页</title>
+<style>
+  body{font:14px/1.6 system-ui,"Microsoft YaHei";margin:0;padding:40px;background:#f7f9fc;color:#1f2937}
+  button{padding:10px 16px;border-radius:8px;border:1px solid #c7d6ff;background:#fff;color:#1e3a8a;cursor:pointer;margin:0 8px 8px 0}
+  iframe{width:100%;max-width:640px;height:160px;border:1px solid #dbe3ef;border-radius:10px;background:#fff}
+  .card{background:#fff;border:1px solid #e8edf6;border-radius:12px;padding:16px;margin-bottom:16px}
+</style>
+</head>
+<body>
+  <h1>嵌套结构测试页</h1>
+
+  <div class="card">
+    <h2>1. 普通 DOM</h2>
+    <button id="plain">普通按钮</button>
+  </div>
+
+  <div class="card">
+    <h2>2. Shadow DOM</h2>
+    <shadow-widget id="sw"></shadow-widget>
+  </div>
+
+  <div class="card">
+    <h2>3. 同源 iframe</h2>
+    <iframe src="/nested-child.html" title="子页面"></iframe>
+  </div>
+
+<script>
+  customElements.define("shadow-widget", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = `
+        <style>.box{display:flex;gap:8px;align-items:center}</style>
+        <div class="box">
+          <span>影子组件：</span>
+          <button id="shadow-btn">影子按钮</button>
+        </div>`;
+      root.querySelector("#shadow-btn").addEventListener("click", () => {
+        window.__clicked = (window.__clicked || []).concat("shadow");
+      });
+    }
+  });
+  document.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => (window.__clicked = (window.__clicked || []).concat(b.id || b.textContent))),
+  );
+</script>
+<script src="/sdk.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# 统一换行：Linux 部署脚本必须 LF，否则 bash 会因 CR 报错
+* text=auto
+*.sh text eol=lf
+deploy/systemd/*.service text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.png binary
+*.jpg binary

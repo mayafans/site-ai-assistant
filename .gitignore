@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+.npm/
+npm-debug.log*
+
+# 运行时数据（含站点配置、LLM Key、用户口令哈希，绝不入库）
+data/sites.json
+data/users.json
+data/*.local.json
+
+# 网关实际运行配置（含内网地址，示例见 deploy/gateway.config.json）
+deploy/gateway.config.local.json
+deploy/gateway.config.*.local.json
+
+# 日志与临时产物
+*.log
+*.tmp
+.tmp/
+dist/
+coverage/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本机启动脚本记录的进程号
+.local-pids

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>子页面</title>
+<style>body{font:14px/1.6 system-ui,"Microsoft YaHei";padding:16px;background:#fff}
+button{padding:8px 14px;border-radius:8px;border:1px solid #c7d6ff;background:#fff;color:#1e3a8a;cursor:pointer}</style>
+</head>
+<body>
+  <h3>我是同源 iframe 里的子页面</h3>
+  <button id="frame-btn">框架按钮</button>
+<script>
+  document.getElementById("frame-btn").addEventListener("click", () => {
+    window.parent.__clicked = (window.parent.__clicked || []).concat("iframe");
+  });
+</script>
+</body>
+</html>

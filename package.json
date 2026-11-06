@@ -1,0 +1,27 @@
+{
+  "name": "site-ai-assistant",
+  "version": "0.5.0",
+  "private": true,
+  "description": "站内 AI 助手：页面感知 + 页面操作 + 多站点后台 + 任意网站反代注入网关",
+  "type": "module",
+  "main": "server.mjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node build-widget.mjs",
+    "start": "node server.mjs",
+    "dev": "node build-widget.mjs && node server.mjs",
+    "gateway": "node deploy/gateway.mjs",
+    "gateway:probe": "node deploy/gateway.mjs --probe",
+    "test": "node test/shot-policy.test.mjs"
+  },
+  "keywords": [
+    "ai-assistant",
+    "in-page-agent",
+    "reverse-proxy",
+    "sse",
+    "llm"
+  ],
+  "license": "MIT"
+}
