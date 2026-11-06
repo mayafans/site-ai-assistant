@@ -716,6 +716,8 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
   const origin = req.headers.origin || "";
   if (req.method === "OPTIONS") {
+    // /v1/* 的预检交给 handleLlmProxy：它会按需声明 authorization 等头
+    if (url.pathname.startsWith("/v1/")) return await handleLlmProxy(req, res, url);
     res.writeHead(204, {
       "access-control-allow-origin": origin || "*",
       "access-control-allow-headers": "content-type,x-admin-token",
@@ -730,8 +732,6 @@ const server = http.createServer(async (req, res) => {
     // page-agent（页面内 Agent）的 OpenAI 兼容入口，Key 在服务端注入
     // baseURL 形如 /v1/<siteKey>，客户端自行拼上 /chat/completions
     if (/^\/v1(\/[^/]+)?\/chat\/completions\/?$/.test(url.pathname))
-      return await handleLlmProxy(req, res, url);
-    if (req.method === "OPTIONS" && url.pathname.startsWith("/v1/"))
       return await handleLlmProxy(req, res, url);
 
     // ---- 账号登录（多人共用后台）----
