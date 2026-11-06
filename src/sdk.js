@@ -123,17 +123,56 @@
       return "textbox";
     }
     const role = el.getAttribute("role");
-    if (role === "button" || role === "link" || role === "radio" || role === "checkbox") return role;
+    if (
+      role === "menuitem" ||
+      role === "option" ||
+      role === "tab" ||
+      role === "switch" ||
+      role === "treeitem" ||
+      role === "button" ||
+      role === "link" ||
+      role === "radio" ||
+      role === "checkbox"
+    )
+      return role;
+    // 图标按钮：antd 的「更多」「复制」这类是 <span class="anticon anticon-more">，
+    // 没有 role 也没有文字，只有 cursor:pointer —— 不认出来，悬停出来的菜单就点不动
+    const cls = (el.className && el.className.toString()) || "";
+    if (/dropdown-trigger|anticon-|icon-btn|btn-icon|-toolbar|toolbar-|action-icon/i.test(cls)) {
+      try {
+        if (getComputedStyle(el).cursor === "pointer") return "button";
+      } catch {}
+    }
+    if (el.hasAttribute("aria-haspopup") || el.hasAttribute("data-toggle")) return "button";
     return null;
+  }
+
+  /** 没有任何角色、但明显可点的叶子元素（cursor:pointer 且内部没有真正的交互元素） */
+  function clickableHint(el) {
+    let cur = "";
+    try {
+      cur = getComputedStyle(el).cursor;
+    } catch {}
+    if (cur !== "pointer") return false;
+    try {
+      if (el.querySelector(ROLE_SEL)) return false;
+    } catch {}
+    return true;
   }
 
   function nameOf(el) {
     const raw =
       el.getAttribute("aria-label") ||
+      el.getAttribute("title") ||
       (roleOf(el) === "heading" ? el.textContent : el.innerText || el.textContent) ||
       el.getAttribute("placeholder") ||
       "";
-    return raw.replace(/\s+/g, " ").trim().slice(0, 80);
+    const txt = raw.replace(/\s+/g, " ").trim();
+    if (txt) return txt.slice(0, 80);
+    // 图标按钮没有文字：从 class 里挑个有意义的词（anticon-more → more，fa-copy → copy）
+    const cls = (el.className && el.className.toString()) || "";
+    const icon = cls.match(/\b(?:anticon|icon|fa|el-icon|iconfont)[-_]?([a-z0-9-]{2,24})/i);
+    return icon ? icon[1].slice(0, 40) : "";
   }
 
   /** 读取或分配稳定的 ref（对照 KiKi 的 data-qca-ref） */
@@ -293,7 +332,8 @@
   ]);
   const ROLE_SEL =
     'a[href],button,input,select,textarea,summary,h1,h2,h3,h4,h5,h6,[data-ai-text],' +
-    '[role="button"],[role="link"],[role="radio"],[role="checkbox"],[contenteditable="true"]';
+    '[role="button"],[role="link"],[role="radio"],[role="checkbox"],[role="menuitem"],' +
+    '[role="option"],[role="tab"],[role="switch"],[role="treeitem"],[aria-haspopup],[contenteditable="true"]';
   const TEXT_LINE_MAX = 1200; // 单块文本上限（字符）
   const TEXT_BUDGET = 16000; // 整页文本总预算（字符）
 
@@ -333,7 +373,7 @@
         return;
       }
 
-      const role = roleOf(el);
+      const role = roleOf(el) || (!inRole && visible(el) && clickableHint(el) ? "button" : null);
       let childDepth = depth;
       if (role && visible(el) && !seen.has(el)) {
         seen.add(el);
