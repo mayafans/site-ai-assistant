@@ -89,6 +89,35 @@ function buildSnippet(cfg) {
   return `<script ${MARK} ${attrs.join(" ")}></script>`;
 }
 
+// -------------------------------------------------- 页面内 Agent（page-agent）——
+// 成熟方案 alibaba/page-agent：同一个 bundle 在页面里跑 Re-act 循环（单宏工具、
+// 步数预算、状态机、内置面板）。地址栏带 ?pa=1 时用它替代自研助手，便于同页对比。
+// 模型走我们自己的 /v1/<siteKey> 代理，API Key 只留在服务端。
+function buildPaSnippet(cfg) {
+  const base = String(cfg.assistant.base).replace(/\/+$/, "");
+  const g = (k, d) => (cfg.defaults[k] != null ? cfg.defaults[k] : d);
+  const site = String(g("siteKey", "default"));
+  return (
+    `<script ${MARK}-pa>(function(){` +
+    `var A=${JSON.stringify(base)},S=${JSON.stringify(site)};` +
+    `function boot(){try{` +
+    `if(!window.PageAgent)return;` +
+    `if(window.__kdPa){window.__kdPa.panel.show();return}` +
+    `var a=new window.PageAgent({` +
+    `model:"site-default",` +
+    `baseURL:A+"/v1/"+encodeURIComponent(S),` +
+    `apiKey:"server-side",` + // 真 Key 由代理注入，页面里只是占位
+    `language:"zh-CN",maxSteps:40,enableMask:true` +
+    `});` +
+    `window.__kdPa=a;a.panel.show();` +
+    `}catch(e){console.error("[page-agent] 初始化失败",e)}}` +
+    `var s=document.createElement("script");s.src=A+"/page-agent.js?autoInit=false";` +
+    `s.async=true;s.onload=boot;s.onerror=function(){console.error("[page-agent] bundle 加载失败")};` +
+    `document.head.appendChild(s);` +
+    `})();</script>`
+  );
+}
+
 // ------------------------------------------------------- SPA 路由前缀修复 ——
 // 反代把站点挂在 /<slug> 下，前端路由（React Router / Vue Router）读到的是带前缀的
 // location.pathname，路由表匹配不上 → 整页"页面不存在"（夜莺 /10.10.5.2:17000/dashboards
@@ -127,9 +156,9 @@ function buildSpaShim(ctx) {
   );
 }
 
-function inject(html, ctx) {
-  if (html.includes(MARK)) return html;
-  const snippet = ctx.snippet;
+function inject(html, ctx, mode) {
+  if (html.includes(mode === "pa" ? MARK + "-pa" : MARK)) return html;
+  const snippet = mode === "pa" ? ctx.paSnippet : ctx.snippet;
   const shim = looksLikeSpa(html) ? buildSpaShim(ctx) : "";
   let placed = false;
   if (shim) {
@@ -350,6 +379,7 @@ function makeContext(cfg, slug, scheme) {
     wildcardExt: cfg.dynamic.wildcardExt,
     publicIsHttp: cfg.publicScheme === "http",
     snippet: buildSnippet(cfg),
+    paSnippet: buildPaSnippet(cfg),
   };
 }
 
@@ -583,6 +613,12 @@ function shouldInject(req) {
   return isDocumentRequest(req);
 }
 
+/** 地址栏带 pa=1：用 page-agent 替代自研助手（同一页面 A/B 对比用） */
+function wantsPa(req) {
+  const u = String((req && req.url) || "");
+  return /[?&]pa=1(?:&|$)/.test(u);
+}
+
 function onResponse(ctx, r, res, req) {
   const ctype = String(r.headers["content-type"] || "");
   try {
@@ -611,7 +647,7 @@ function onResponse(ctx, r, res, req) {
     try {
       if (isHtml && docReq) {
         text = rewriteHtml(text, ctx);
-        if (ok2xx && shouldInject(req)) text = inject(text, ctx);
+        if (ok2xx && shouldInject(req)) text = inject(text, ctx, wantsPa(req) ? "pa" : "widget");
       } else if (!isCss) {
         // XHR 拿到的 "text/html" 是数据，原样返回
       } else {

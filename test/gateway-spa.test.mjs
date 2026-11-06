@@ -216,6 +216,18 @@ const main = async () => {
     check("cookie 兜底仍然有效", viaCookie.status === 200 && viaCookie.body.includes('"/api/echo'));
     const orphan = await get(gwPort, `/dashboards`, { accept: "text/html" });
     check("完全无线索时返回帮助页", orphan.status === 404 && orphan.body.includes("直接访问就行"), `status=${orphan.status}`);
+
+    console.log("?pa=1 切到 page-agent 引擎");
+    const pa = await get(gwPort, `/${slug}/?pa=1`, { accept: "text/html" });
+    check("注入 page-agent 引导脚本", pa.body.includes(`${MARK}-pa`));
+    check("不再注入自研助手脚本", !pa.body.includes(`<script ${MARK} `), pa.body.slice(0, 0));
+    check("引导脚本加载 bundle", pa.body.includes("/page-agent.js?autoInit=false"));
+    check("baseURL 指向服务端代理", pa.body.includes(`/v1/`));
+    check("页面里没有真实 Key（只有占位）", pa.body.includes("server-side") && !/sk-[A-Za-z0-9]{16,}/.test(pa.body));
+    const paSim = pa.body.match(new RegExp(`<script ${MARK}-pa>([\\s\\S]*?)</script>`));
+    check("引导脚本是语法正确的 JS", !!paSim && (() => { try { new vm.Script(paSim[1]); return true; } catch { return false; } })());
+    const normal = await get(gwPort, `/${slug}/`, { accept: "text/html" });
+    check("不带 pa=1 仍走原助手", normal.body.includes(`<script ${MARK} `) && !normal.body.includes(`${MARK}-pa`));
   } finally {
     gw.kill();
     fixture.close();
