@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>受控组件填值验证（React value tracker 模拟）</title>
+<style>
+  body{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;padding:24px;max-width:760px}
+  input,textarea,select{display:block;width:100%;margin:6px 0 14px;padding:8px;font:inherit}
+  #log{background:#f6f8fa;border:1px solid #d0d7de;border-radius:8px;padding:10px;white-space:pre-wrap}
+  .ok{color:#1a7f37}.bad{color:#cf222e}
+</style>
+</head>
+<body>
+<h3>为什么 fill 填不进去：模拟 React 受控组件</h3>
+<p>
+  下面的输入框在 DOM 节点实例上重定义了 <code>value</code> 存取器，行为与 React 的
+  <code>inputValueTracking</code> 一致：只有「tracker 记录的值」与「真实值」不同时，
+  <code>input</code> 事件才会被当成真正的变更（onChange 才会触发）。
+</p>
+
+<label>仪表盘名称（input，模拟受控）</label>
+<input id="name" data-qca-ref="900" placeholder="仪表盘名称">
+<label>备注（textarea，模拟受控）</label>
+<textarea id="remark" data-qca-ref="901" placeholder="备注"></textarea>
+<label>分类（select，模拟受控）</label>
+<select id="cat" data-qca-ref="902">
+  <option value="">未选择</option>
+  <option value="cost">云费用</option>
+</select>
+
+<div id="log">state: {}</div>
+
+<script>
+// ---------- 1. 模拟 React 的 value tracker ----------
+function installTracker(el) {
+  const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+  let tracked = '';
+  Object.defineProperty(el, 'value', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get() { return desc.get.call(this); },
+    set(v) { tracked = '' + v; desc.set.call(this, v); },
+  });
+  el.__tracked = () => tracked;
+}
+
+// ---------- 2. 模拟 React onChange：tracker 认为没变就不回调 ----------
+window.__state = { name: '', remark: '', cat: '', onChange: 0 };
+function bindLikeReact(el, key) {
+  const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+  el.addEventListener('input', () => {
+    const now = desc.get.call(el);
+    if (now === el.__tracked()) return;   // ← 老写法 el.value=x 就卡在这里
+    el.__tracked = (() => { const v = now; return () => v; })();
+    window.__state[key] = now;
+    window.__state.onChange++;
+    render();
+  });
+}
+function render() {
+  document.getElementById('log').textContent = 'state: ' + JSON.stringify(window.__state, null, 2) +
+    '\n\nDOM 值: name=' + JSON.stringify(document.getElementById('name').value) +
+    '  remark=' + JSON.stringify(document.getElementById('remark').value) +
+    '  cat=' + JSON.stringify(document.getElementById('cat').value);
+}
+
+// ---------- 3. 对照组：老写法（直接赋 value） ----------
+window.__oldStyle = (sel, val) => {
+  const el = document.querySelector(sel);
+  el.value = val;                                  // 只更新 tracker
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return window.__state;
+};
+
+['name', 'remark', 'cat'].forEach((id) => {
+  const el = document.getElementById(id);
+  installTracker(el);
+  bindLikeReact(el, id);
+});
+render();
+</script>
+
+<!-- 4. 加载助手 SDK（同源构建产物），用 __kikiDebug.perform 走真实动作链路 -->
+<script src="../public/widget.js" data-api-base="" data-site-key="default" data-title="填值验证"></script>
+</body>
+</html>

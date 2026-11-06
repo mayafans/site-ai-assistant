@@ -507,6 +507,38 @@
     }
   }
 
+  // 受控组件的值必须"骗过"框架的值跟踪器：
+  // React 会在 DOM 节点实例上重定义 value 的 get/set（value tracker）。
+  // 直接写 el.value = x 只更新了 tracker，框架随后对比发现"没变化"，就把 input 事件吞掉，
+  // 页面 state 仍是空值 → 表现成"框里填上了、提交时被清空 / 报未填"（夜莺新建仪表盘就是这个坑）。
+  // 正确做法：调用原型上的原生 setter 绕过 tracker，再派发 input/change。
+  function setNativeValue(el, value) {
+    const proto =
+      el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement && window.HTMLTextAreaElement.prototype
+        : el.tagName === "SELECT" ? window.HTMLSelectElement && window.HTMLSelectElement.prototype
+          : window.HTMLInputElement && window.HTMLInputElement.prototype;
+    const desc = proto && Object.getOwnPropertyDescriptor(proto, "value");
+    if (desc && desc.set) desc.set.call(el, value);
+    else el.value = value;
+  }
+
+  /** 把值写进输入框/文本域/下拉框/富文本，并派发框架能识别的输入事件 */
+  function fillElement(el, value) {
+    const str = String(value);
+    el.focus();
+    if (el.isContentEditable) {
+      // 富文本（Lexical/Slate/ProseMirror 等）直接改文本再派发 input
+      el.textContent = str;
+    } else {
+      setNativeValue(el, str);
+    }
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+    const now = el.value !== undefined && el.value !== null ? String(el.value) : String(el.textContent || "");
+    return now === str;
+  }
+
   /** 解析并执行一条动作文本，返回 {ok, message, ...} */
   async function performCommand(raw) {
     const line = String(raw || "").trim();
@@ -611,11 +643,10 @@
       if (!el) return { ok: false, message: "找不到输入框" };
       highlight(el);
       const value = m[2] !== undefined ? m[2] : m[3];
-      el.focus();
-      el.value = value;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-      return { ok: true, message: `已填写 ${describe(el)} = ${value}` };
+      const filled = fillElement(el, value);
+      return filled
+        ? { ok: true, message: `已填写 ${describe(el)} = ${value}` }
+        : { ok: false, message: `填写 ${describe(el)} 后值没生效：可能是受控组件没接收到事件，或输入框被禁用/只读` };
     }
 
     if (verb === "select") {
@@ -627,8 +658,7 @@
       if (el.tagName === "SELECT") {
         const opt = [...el.options].find((o) => o.text.trim() === value || o.value === value);
         if (!opt) return { ok: false, message: `下拉框里没有「${value}」` };
-        el.value = opt.value;
-        el.dispatchEvent(new Event("change", { bubbles: true }));
+        fillElement(el, opt.value);
         return { ok: true, message: `已选择「${value}」` };
       }
       el.click();
