@@ -583,73 +583,6 @@ async function handleChat(req, res, url) {
   return agentStep(ctx, res);
 }
 
-// ------------------------------------------------- OpenAI 兼容代理 ——
-// 页面内 Agent（page-agent）自己用 fetch 调 `${baseURL}/chat/completions`。
-// Key 绝不能进页面，所以 baseURL 指向这里，由服务端统一注入上游 Key。
-// 顺带做上游差异收敛：DeepSeek 之类不认 parallel_tool_calls / 具名 tool_choice。
-function sanitizeUpstreamBody(body, base) {
-  const out = { ...body };
-  const isDeepSeek = /deepseek/i.test(base);
-  if (isDeepSeek) {
-    delete out.parallel_tool_calls;
-    if (out.tool_choice && typeof out.tool_choice === "object") out.tool_choice = "required";
-    delete out.temperature; // deepseek 的思考模型不认
-  }
-  if (!out.max_tokens) out.max_tokens = 1500;
-  return out;
-}
-
-async function handleLlmProxy(req, res, url) {
-  // 页面来源和助手服务不同源，必须放宽 CORS
-  res.setHeader("access-control-allow-origin", "*");
-  res.setHeader("access-control-allow-headers", "content-type, authorization");
-  res.setHeader("access-control-allow-methods", "POST, OPTIONS");
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    return res.end();
-  }
-  if (req.method !== "POST") return json(res, 405, { error: "method not allowed" });
-
-  const parts = url.pathname.split("/").filter(Boolean); // v1 [site] chat completions
-  const siteSeg = parts.length >= 4 ? decodeURIComponent(parts[1]) : url.searchParams.get("site");
-  const idOrKey = siteSeg || "default";
-  const site = sites[idOrKey] || Object.values(sites).find((s) => s.key === idOrKey) || sites[Object.keys(sites)[0]];
-  if (!site) return json(res, 404, { error: "site not found" });
-  const key = site.llm?.apiKey || fallbackKey();
-  if (!key) return json(res, 500, { error: "该站点未配置 LLM API Key" });
-
-  const ip =
-    String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "unknown";
-  if (!checkRate(ip)) return json(res, 429, { error: { message: "请求太频繁，请稍后再试" } });
-
-  const raw = await readBody(req);
-  const base = (site.llm?.baseURL || "https://api.deepseek.com/v1").replace(/\/+$/, "");
-  // 模型以后台站点配置为准，页面侧传什么都覆盖掉，避免被人替换成贵的模型
-  const body = sanitizeUpstreamBody({ ...raw, model: site.llm?.model || raw.model || "deepseek-chat" }, base);
-  try {
-    let up = await fetch(base + "/chat/completions", {
-      method: "POST",
-      headers: { authorization: "Bearer " + key, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    let text = await up.text();
-    // 个别上游不认 tool_choice:"required"，降级成 auto 再试一次
-    if (up.status === 400 && /tool_choice|tool call/i.test(text)) {
-      const relaxed = { ...body, tool_choice: "auto" };
-      up = await fetch(base + "/chat/completions", {
-        method: "POST",
-        headers: { authorization: "Bearer " + key, "content-type": "application/json" },
-        body: JSON.stringify(relaxed),
-      });
-      text = await up.text();
-    }
-    res.writeHead(up.status, { "content-type": "application/json; charset=utf-8" });
-    res.end(text);
-  } catch (e) {
-    json(res, 502, { error: { message: "上游调用失败：" + e.message } });
-  }
-}
-
 // ---------------------------------------------------------- 用户管理 API ——
 async function handleUsers(req, res, name) {
   const safe = (u) => ({ username: u.username, role: u.role, createdAt: u.createdAt });
@@ -716,8 +649,6 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
   const origin = req.headers.origin || "";
   if (req.method === "OPTIONS") {
-    // /v1/* 的预检交给 handleLlmProxy：它会按需声明 authorization 等头
-    if (url.pathname.startsWith("/v1/")) return await handleLlmProxy(req, res, url);
     res.writeHead(204, {
       "access-control-allow-origin": origin || "*",
       "access-control-allow-headers": "content-type,x-admin-token",
@@ -728,11 +659,6 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === "POST" && url.pathname === "/api/chat") return await handleChat(req, res, url);
-
-    // page-agent（页面内 Agent）的 OpenAI 兼容入口，Key 在服务端注入
-    // baseURL 形如 /v1/<siteKey>，客户端自行拼上 /chat/completions
-    if (/^\/v1(\/[^/]+)?\/chat\/completions\/?$/.test(url.pathname))
-      return await handleLlmProxy(req, res, url);
 
     // ---- 账号登录（多人共用后台）----
     if (req.method === "POST" && url.pathname === "/api/auth/login") {
