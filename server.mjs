@@ -237,7 +237,10 @@ function systemPrompt(site) {
 当前页面会被序列化成缩进文本树，每个可交互元素带 [ref=N]（例如：- button "去结算" [ref=11]）。
 \`- text [ref=N]: 内容\` 是页面正文（段落、表格单元格、新闻/公告全文），可直接引用和总结，不要声称“正文读不到”。
 用户可能随消息附上 1~3 张图片（截图或照片），它们会作为 image_url 一起发给你，请直接看图回答，不要说你无法查看图片。
-用 invokeClient 工具执行动作命令：goto <url> / click <ref> / input <ref> "<文本>" / select <ref> <值> / scroll <ref> / highlight <ref> / screenshot
+用 invokeClient 工具执行动作命令：goto <url> / click <ref> / hover <ref|css> / input <ref> "<文本>" / select <ref> <值> / scroll <ref> / highlight <ref> / screenshot
+\`hover\` 把鼠标悬停到元素上，专治「悬停才出现」的东西：卡片/面板右上角的工具栏、表格行的操作按钮、hover 展开的下拉菜单。
+悬停会自动从给定元素往上逐层试到容器，执行完的新快照会自动跟回来——看到新出现的菜单项（复制、删除、更多…）直接 click 它的 ref 即可。
+没有 ref 的容器可以在 hover 后面直接给 CSS 选择器，例如 hover .ant-card。
 \`screenshot\` 截取当前视口，截图会作为图片附在后续消息里给你看：正文是图片/图表、结构信息不足、或连续操作没进展时用它；看不到的部分先 scroll 再截。
 
 规则：
@@ -245,7 +248,9 @@ function systemPrompt(site) {
 2. 关键操作（提交、支付、删除）先 askUser 确认。
 3. 一次只做一个动作，等结果再继续。
 4. 需要业务数据时调用对应的业务工具，不要编造。
-5. 回答用中文、简洁，可用 markdown。
+5. 找不到「复制/编辑/更多」这类入口时先别下结论说做不到：大概率是 hover 才出现，用 hover 悬停它所在的面板/行/卡片，再看新快照。
+6. click 返回「页面没有变化」时，下一步优先试 hover 同一个元素或其父容器，而不是重复 click。
+7. 回答用中文、简洁，可用 markdown。
 
 可用技能（需要时先调 skill 加载完整说明）：
 ${skillCatalog}
@@ -271,7 +276,7 @@ function toolsFor(site) {
       type: "function",
       function: {
         name: "invokeClient",
-        description: "在当前页面执行动作：goto/click/input/select/scroll/highlight",
+        description: "在当前页面执行动作：goto/click/hover/input/select/scroll/highlight/screenshot。hover 用于悬停才出现的菜单入口（卡片右上角工具栏、行操作、hover 下拉），可传 ref 或 CSS 选择器",
         parameters: {
           type: "object",
           properties: { command: { type: "string" }, explain: { type: "string" } },

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>hover 才出现的菜单 · 回归夹具</title>
+<style>
+  body { font: 14px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; padding: 40px; background: #f5f7fb; }
+  .card { position: relative; width: 360px; padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 24px; }
+  .card .title { font-weight: 600; }
+  .card .toolbar { display: none; position: absolute; right: 10px; top: 8px; gap: 6px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 4px; box-shadow: 0 4px 14px rgba(15, 23, 42, .12); }
+  .card.open .toolbar { display: flex; }
+  .card .toolbar button { cursor: pointer; }
+  /* CSS-only 悬停菜单：合成事件改不了 :hover，用来验证"没反应"时会如实报告 */
+  .csscard { position: relative; width: 360px; padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
+  .csscard .cssmenu { display: none; position: absolute; right: 10px; top: 8px; }
+  .csscard:hover .cssmenu { display: block; }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="title" id="cardTitle">主机 CPU 使用率</div>
+    <div class="toolbar" id="toolbar">
+      <button id="btnCopy">复制</button>
+      <button id="btnDelete">删除</button>
+    </div>
+  </div>
+
+  <div class="csscard" id="cssCard">
+    <div class="title">CSS :hover 面板</div>
+    <div class="cssmenu" id="cssMenu"><button>CSS 复制</button></div>
+  </div>
+
+  <script>
+    // JS 驱动：mouseenter 挂出工具栏（antd/React 这类组件的行为）
+    const card = document.getElementById("card");
+    let enters = 0;
+    card.addEventListener("mouseenter", () => { enters++; card.classList.add("open"); });
+    card.addEventListener("mouseover", () => { enters++; card.classList.add("open"); });
+    card.addEventListener("mouseleave", () => card.classList.remove("open"));
+    window.__enters = () => enters;
+    window.__menuVisible = () => getComputedStyle(document.getElementById("toolbar")).display !== "none";
+  </script>
+  <script src="../public/widget.js"></script>
+</body>
+</html>

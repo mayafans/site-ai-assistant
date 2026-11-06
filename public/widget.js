@@ -181,6 +181,91 @@
     return out;
   }
 
+  // 悬停后才挂出来的菜单/浮层：用来判断一次 hover 到底有没有把菜单叫出来
+  const MENU_SEL =
+    '[role="menu"],[role="listbox"],.ant-dropdown:not(.ant-dropdown-hidden),.ant-popover:not(.ant-popover-hidden),.ant-menu-submenu-popup,[class*="dropdown-menu"],[class*="popover"],[class*="hover-menu"]';
+
+  /** 当前可见的菜单/浮层数量（含同源 iframe） */
+  function visibleMenus(rootDoc = document) {
+    const out = [];
+    for (const doc of collectDocuments(rootDoc)) {
+      let list = [];
+      try {
+        list = [...doc.querySelectorAll(MENU_SEL)];
+      } catch {}
+      for (const el of list) if (visible(el)) out.push(el);
+    }
+    return out;
+  }
+
+  /** 当前可见的可交互元素数量：悬停把按钮/菜单项挂出来时这个数会变 */
+  function actionableCount(rootDoc) {
+    let n = 0;
+    for (const doc of collectDocuments(rootDoc)) {
+      let list = [];
+      try {
+        list = [...doc.querySelectorAll(ROLE_SEL)];
+      } catch {}
+      for (const el of list) if (visible(el)) n++;
+    }
+    return n;
+  }
+
+  /**
+   * 悬停期间盯住 DOM 变化（React/antd 是把菜单挂出来的，属性和节点都会动）。
+   * 只认真实页面变化，助手自己的高亮框/面板（data-kiki-ignore）一律不计。
+   */
+  function watchMutations(doc) {
+    const win = (doc && doc.defaultView) || window;
+    const MO = win.MutationObserver || window.MutationObserver;
+    if (!MO) return { hits: () => 0, stop() {} };
+    let hits = 0;
+    const ours = (node) => {
+      if (!node) return false;
+      const el = node.nodeType === 1 ? node : node.parentElement;
+      if (!el) return false;
+      try {
+        if (el.hasAttribute && el.hasAttribute("data-kiki-ignore")) return true;
+        return !!(el.closest && el.closest(IGNORE));
+      } catch {
+        return false;
+      }
+    };
+    // 只看真正属于页面的变化：助手自己的高亮框会被插进 body、1.6s 后再被删掉，
+    // 这类"父节点上多/少了个忽略节点"的记录必须排除，否则悬停永远被误判成有反应
+    const matters = (r) => {
+      if (ours(r.target)) return false;
+      if (r.type === "attributes") return true;
+      const nodes = [...(r.addedNodes || []), ...(r.removedNodes || [])];
+      if (!nodes.length) return false;
+      return nodes.some((n) => !ours(n));
+    };
+    const mo = new MO((records) => {
+      for (const r of records) {
+        if (matters(r)) {
+          hits++;
+          return;
+        }
+      }
+    });
+    try {
+      mo.observe(doc.documentElement || doc.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style", "hidden", "aria-hidden", "aria-expanded"],
+      });
+    } catch {}
+    return {
+      hits: () => hits,
+      stop() {
+        try {
+          mo.disconnect();
+        } catch {}
+      },
+    };
+  }
+
   /** 元素相对视口的坐标（跨 iframe 时累加偏移） */
   function globalRect(el) {
     const r = el.getBoundingClientRect();
@@ -401,22 +486,37 @@
   }
 
   function resolve(sel) {
-    const ref = parseRef(sel);
-    if (ref == null) return null;
-    if (!refMap.has(ref)) {
-      // refMap 在刷新后会空，用属性兜底（含同源 iframe 内部）
-      for (const doc of collectDocuments()) {
-        let el = null;
-        try {
-          el = doc.querySelector(`[${REF_ATTR}="${ref}"]`);
-        } catch {}
-        if (el) {
-          refMap.set(ref, el);
-          break;
+    const raw = String(sel || "").trim();
+    const ref = parseRef(raw);
+    if (ref != null) {
+      if (!refMap.has(ref)) {
+        // refMap 在刷新后会空，用属性兜底（含同源 iframe 内部）
+        for (const doc of collectDocuments()) {
+          let el = null;
+          try {
+            el = doc.querySelector(`[${REF_ATTR}="${ref}"]`);
+          } catch {}
+          if (el) {
+            refMap.set(ref, el);
+            break;
+          }
         }
       }
+      return refMap.get(ref) || null;
     }
-    return refMap.get(ref) || null;
+    // 没有 ref 时允许直接给 CSS 选择器：卡片容器、悬浮区域这类元素拿不到 ref，
+    // 而「悬停才出现的菜单」往往只能按结构定位（例如 .ant-card）。
+    if (!raw || !/^[.#[:a-zA-Z*]/.test(raw)) return null;
+    if (/^\[?ref/i.test(raw)) return null;
+    for (const doc of collectDocuments()) {
+      try {
+        const el = doc.querySelector(raw);
+        if (el) return el;
+      } catch {
+        return null; // 非法选择器
+      }
+    }
+    return null;
   }
 
   function describe(el) {
@@ -580,9 +680,46 @@
     if (verb === "hover") {
       const el = resolve(cmd.rest);
       if (!el) return { ok: false, message: "找不到目标元素" };
-      simulateHover(el);
+      const doc = el.ownerDocument;
+      try {
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+      } catch {
+        try {
+          el.scrollIntoView();
+        } catch {}
+      }
+      await sleep(120);
+      const menusBefore = visibleMenus(doc).length;
+      const actBefore = actionableCount(doc);
+      const watcher = watchMutations(doc);
+      // 悬停才出现的工具栏常常挂在祖先上（卡片右上角、整行操作），所以从目标元素往上逐层试
+      let node = el;
+      let level = 0;
+      let reacted = false;
+      while (node && level <= 6) {
+        simulateHover(node);
+        await sleep(170);
+        if (watcher.hits() > 0 || visibleMenus(doc).length > menusBefore || actionableCount(doc) !== actBefore) {
+          reacted = true;
+          break;
+        }
+        node = node.parentElement;
+        level++;
+      }
+      await sleep(120);
+      watcher.stop();
       highlight(el);
-      return { ok: true, message: `已悬停 ${describe(el)}` };
+      const menus = visibleMenus(doc).length;
+      const climbed = level ? `（悬停位置往上顶了 ${level} 层到容器上）` : "";
+      return {
+        ok: true,
+        changed: reacted,
+        message: reacted
+          ? `已悬停 ${describe(el)}${climbed}，页面有反应${
+              menus > menusBefore ? "，新出现的菜单/浮层已经在下一条快照里，直接 click 它" : "，新出现的内容在下一条快照里"
+            }`
+          : `已悬停 ${describe(el)}${climbed}，页面没有变化：如果菜单本该出现，可能它只认真实鼠标指针（纯 CSS :hover），改用 click 展开或换个触发元素`,
+      };
     }
 
     if (verb === "click") {
